@@ -1,0 +1,31 @@
+const key = "rnd_oFPOGPc7RiHObdpuq5mIVPVP6jw5";
+
+const payload = {
+  type: "web_service",
+  name: "videochat-api-prod",
+  repo: "https://github.com/Parteek04/videochat-platform",
+  branch: "main",
+  rootDir: "backend",
+  autoDeploy: "yes",
+  serviceDetails: {
+    env: "node",
+    plan: "free",
+    envSpecificDetails: {
+      buildCommand: "npm install && npm run build",
+      startCommand: "npm start"
+    }
+  }
+};
+
+fetch("https://api.render.com/v1/services", {
+  method: "POST",
+  headers: {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${key}`
+  },
+  body: JSON.stringify(payload)
+})
+.then(r => r.json())
+.then(data => console.log(JSON.stringify(data, null, 2)))
+.catch(e => console.error(e));

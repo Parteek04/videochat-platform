@@ -1,0 +1,54 @@
+{
+  "deployId": "dep-d6pifu6uk2gs73fh8jbg",
+  "service": {
+    "autoDeploy": "yes",
+    "autoDeployTrigger": "commit",
+    "branch": "main",
+    "createdAt": "2026-03-12T20:54:15.522385Z",
+    "dashboardUrl": "https://dashboard.render.com/web/srv-d6piftmuk2gs73fh8ip0",
+    "id": "srv-d6piftmuk2gs73fh8ip0",
+    "name": "videochat-api",
+    "notifyOnFail": "default",
+    "ownerId": "tea-d4u076n17kns73cuiv20",
+    "repo": "https://github.com/Parteek04/videochat-platform",
+    "rootDir": "backend",
+    "serviceDetails": {
+      "buildPlan": "starter",
+      "cache": {
+        "profile": "no-cache"
+      },
+      "env": "node",
+      "envSpecificDetails": {
+        "buildCommand": "npm install && npm run build",
+        "startCommand": "npm run start"
+      },
+      "healthCheckPath": "",
+      "ipAllowList": [
+        {
+          "cidrBlock": "0.0.0.0/0",
+          "description": "everywhere"
+        }
+      ],
+      "maintenanceMode": {
+        "enabled": false,
+        "uri": ""
+      },
+      "numInstances": 1,
+      "openPorts": null,
+      "plan": "free",
+      "previews": {
+        "generation": "off"
+      },
+      "pullRequestPreviewsEnabled": "no",
+      "region": "oregon",
+      "runtime": "node",
+      "sshAddress": "srv-d6piftmuk2gs73fh8ip0@ssh.oregon.render.com",
+      "url": "https://videochat-api-jrt1.onrender.com"
+    },
+    "slug": "videochat-api-jrt1",
+    "suspended": "not_suspended",
+    "suspenders": [],
+    "type": "web_service",
+    "updatedAt": "2026-03-12T20:54:15.522385Z"
+  }
+}
