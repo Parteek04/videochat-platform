@@ -1,16 +1,23 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-export const connectDB = async (): Promise<void> => {
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/videochat';
-  try {
-    await mongoose.connect(uri);
-    console.log('✅ MongoDB connected:', mongoose.connection.host);
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    throw error;
+export const connectDB = async () => {
+
+  const uri = process.env.MONGODB_URI;
+
+  if (!uri) {
+    throw new Error("❌ MONGODB_URI not found in environment variables");
   }
 
-  mongoose.connection.on('disconnected', () => {
-    console.warn('⚠️  MongoDB disconnected');
-  });
+  try {
+    await mongoose.connect(uri);
+
+    console.log("✅ MongoDB connected:", mongoose.connection.host);
+
+  } catch (error) {
+
+    console.error("❌ MongoDB connection error:", error);
+    process.exit(1);
+
+  }
+
 };
