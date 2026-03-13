@@ -106,7 +106,11 @@ export const registerSocketHandlers = (io: Server): void => {
         if (matchIdx >= 0) {
           const peer = waitingQueue.splice(matchIdx, 1)[0];
           console.log(`✅ Match found: ${socket.id} <-> ${peer.socketId}`);
-          // ...
+          const roomId = uuidv4();
+          socketRoomMap.set(socket.id, roomId);
+          socketRoomMap.set(peer.socketId, roomId);
+
+          // Join both sockets to the room
           socket.join(roomId);
           const peerSocket = io.sockets.sockets.get(peer.socketId);
           if (peerSocket) {
@@ -116,7 +120,12 @@ export const registerSocketHandlers = (io: Server): void => {
             console.error(`❌ Peer socket ${peer.socketId} not found!`);
           }
 
-          // ...
+          // Persist room in MongoDB (fire-and-forget for speed)
+          Room.create({
+            roomId,
+            participants: [uid, peer.uid].filter(Boolean),
+            status: 'active',
+          }).catch(() => {});
           io.to(peer.socketId).emit('peer-found', {
             roomId,
             isInitiator: true,
