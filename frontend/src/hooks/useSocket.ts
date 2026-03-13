@@ -12,7 +12,10 @@ export function useSocket() {
   useEffect(() => {
     socketRef.current = io(SOCKET_URL, {
       transports: ['websocket'],
+      withCredentials: true,
       reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
     });
 
     socketRef.current.on('connect', () => {
