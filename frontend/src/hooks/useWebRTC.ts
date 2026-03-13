@@ -1,4 +1,5 @@
 'use client'
+// v2 - clean WebRTC hook
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Socket } from 'socket.io-client'
