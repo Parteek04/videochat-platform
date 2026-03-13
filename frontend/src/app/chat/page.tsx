@@ -107,6 +107,20 @@ function ChatPageInner() {
       ]);
     });
 
+    // Stranger clicked Next → auto-rejoin search queue (Omegle-style)
+    socket.on('peer-skipped', () => {
+      logSession();
+      closePeer();
+      setRoomId(null);
+      setSessionStartTime(null);
+      setStrangerUid(null);
+      setIsPeerTyping(false);
+      setMessages([]);
+      // Auto-search for new stranger immediately
+      setStatus('waiting');
+      socket.emit('find-peer', { uid: user?.uid, gender, country });
+    });
+
     socket.on(
       'chat-message',
       ({
@@ -141,6 +155,7 @@ function ChatPageInner() {
       socket.off('waiting');
       socket.off('peer-found');
       socket.off('peer-disconnected');
+      socket.off('peer-skipped');
       socket.off('chat-message');
       socket.off('peer-typing');
       socket.off('peer-stop-typing');

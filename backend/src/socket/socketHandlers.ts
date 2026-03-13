@@ -192,8 +192,31 @@ export const registerSocketHandlers = (io: Server): void => {
       },
     );
 
-    // ── SKIP / NEXT PEER ───────────────────────────────────────────────────
+    // ── SKIP / NEXT PEER (Omegle-style) ────────────────────────────────────
     socket.on('skip', async ({ roomId, uid }: { roomId: string; uid?: string }) => {
+      // Re-queue the OTHER user automatically so they auto-search for a new stranger
+      for (const [sid, rid] of socketRoomMap.entries()) {
+        if (rid === roomId && sid !== socket.id) {
+          const peerSocket = io.sockets.sockets.get(sid);
+          if (peerSocket) {
+            socketRoomMap.delete(sid);
+            peerSocket.leave(roomId);
+            const alreadyWaiting = waitingQueue.some((w) => w.socketId === sid);
+            if (!alreadyWaiting) {
+              const rejoinUser: WaitingUser = {
+                socketId: sid,
+                gender: 'both',
+                country: 'global',
+                joinedAt: Date.now(),
+              };
+              waitingQueue.push(rejoinUser);
+              peerSocket.emit('peer-skipped'); // frontend will auto-search
+              console.log(`🔄 Re-queued peer ${sid} after skip`);
+            }
+          }
+        }
+      }
+      // End room for the skipper
       await endRoom(socket, roomId, uid, io);
     });
 
