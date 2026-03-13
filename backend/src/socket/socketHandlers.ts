@@ -194,30 +194,31 @@ export const registerSocketHandlers = (io: Server): void => {
 
     // ── SKIP / NEXT PEER (Omegle-style) ────────────────────────────────────
     socket.on('skip', async ({ roomId, uid }: { roomId: string; uid?: string }) => {
-      // Re-queue the OTHER user automatically so they auto-search for a new stranger
+      // 1. Notify the peer directly — frontend will auto-call find-peer
       for (const [sid, rid] of socketRoomMap.entries()) {
         if (rid === roomId && sid !== socket.id) {
           const peerSocket = io.sockets.sockets.get(sid);
           if (peerSocket) {
-            socketRoomMap.delete(sid);
-            peerSocket.leave(roomId);
-            const alreadyWaiting = waitingQueue.some((w) => w.socketId === sid);
-            if (!alreadyWaiting) {
-              const rejoinUser: WaitingUser = {
-                socketId: sid,
-                gender: 'both',
-                country: 'global',
-                joinedAt: Date.now(),
-              };
-              waitingQueue.push(rejoinUser);
-              peerSocket.emit('peer-skipped'); // frontend will auto-search
-              console.log(`🔄 Re-queued peer ${sid} after skip`);
-            }
+            peerSocket.emit('peer-skipped');
+            console.log(`🔄 Notified peer ${sid} of skip`);
           }
+          break;
         }
       }
-      // End room for the skipper
-      await endRoom(socket, roomId, uid, io);
+
+      // 2. Clean up room (leave + clear socketRoomMap for both users)
+      socket.leave(roomId);
+      for (const [sid, rid] of socketRoomMap.entries()) {
+        if (rid === roomId) socketRoomMap.delete(sid);
+      }
+
+      // 3. Persist to MongoDB (fire-and-forget)
+      Room.findOneAndUpdate({ roomId }, { status: 'ended', endedAt: new Date() }).catch(() => {});
+      if (uid) {
+        User.findOneAndUpdate({ uid }, { isOnline: false, $inc: { totalChats: 1 } }).catch(() => {});
+      }
+
+      console.log(`⏭️ Skip complete for room ${roomId}`);
     });
 
     // ── TYPING INDICATOR ───────────────────────────────────────────────────
