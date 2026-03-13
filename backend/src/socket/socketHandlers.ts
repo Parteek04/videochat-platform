@@ -40,7 +40,10 @@ function findMatch(seeker: WaitingUser): number {
       candidate.country === 'global' ||
       seeker.country === candidate.country;
 
-    if (genderMatch && countryMatch) return i;
+    if (genderMatch && countryMatch) {
+      console.log(`🎯 Match possible with candidate ${candidate.socketId}`);
+      return i;
+    }
   }
   return -1;
 }
@@ -98,26 +101,22 @@ export const registerSocketHandlers = (io: Server): void => {
         };
 
         const matchIdx = findMatch(seeker);
+        console.log(`🔍 Searching match for ${socket.id}. Queue size: ${waitingQueue.length}`);
 
         if (matchIdx >= 0) {
           const peer = waitingQueue.splice(matchIdx, 1)[0];
-
-          const roomId = uuidv4();
-          socketRoomMap.set(socket.id, roomId);
-          socketRoomMap.set(peer.socketId, roomId);
-
-          // Join both sockets to the room
+          console.log(`✅ Match found: ${socket.id} <-> ${peer.socketId}`);
+          // ...
           socket.join(roomId);
-          io.sockets.sockets.get(peer.socketId)?.join(roomId);
+          const peerSocket = io.sockets.sockets.get(peer.socketId);
+          if (peerSocket) {
+            peerSocket.join(roomId);
+            console.log(`🏠 Both joined room ${roomId}`);
+          } else {
+            console.error(`❌ Peer socket ${peer.socketId} not found!`);
+          }
 
-          // Persist room in MongoDB (fire-and-forget for speed)
-          Room.create({
-            roomId,
-            participants: [uid, peer.uid].filter(Boolean),
-            status: 'active',
-          }).catch(() => {});
-
-          // The waiting peer (peer) is the initiator (they waited first)
+          // ...
           io.to(peer.socketId).emit('peer-found', {
             roomId,
             isInitiator: true,
@@ -132,13 +131,11 @@ export const registerSocketHandlers = (io: Server): void => {
             peerGender: peer.gender,
             peerCountry: peer.country,
           });
-
-          console.log(`🤝 Matched: ${peer.socketId} <-> ${socket.id} in room ${roomId}`);
         } else {
           // Add to waiting queue
           waitingQueue.push(seeker);
           socket.emit('waiting', { queuePosition: waitingQueue.length });
-          console.log(`⏳ Waiting: ${socket.id} | Queue: ${waitingQueue.length}`);
+          console.log(`⏳ Added to queue: ${socket.id}. Total waiting: ${waitingQueue.length}`);
         }
       },
     );
