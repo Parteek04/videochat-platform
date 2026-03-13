@@ -81,9 +81,9 @@ export const registerSocketHandlers = (io: Server): void => {
         gender?: string;
         country?: string;
       }) => {
-        // Update user online status
+        // Update user online status (non-blocking)
         if (uid) {
-          await User.findOneAndUpdate({ uid }, { isOnline: true, gender, country }).catch(() => {});
+          User.findOneAndUpdate({ uid }, { isOnline: true, gender, country }).catch(() => {});
         }
 
         // Check if already in a room – prevent double-join

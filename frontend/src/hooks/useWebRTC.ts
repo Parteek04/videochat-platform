@@ -97,36 +97,74 @@ export function useWebRTC({ socket, roomId, isInitiator, localStream }: UseWebRT
       }
     }
 
-    // Handle incoming offer (non-initiator)
-    socket.on('webrtc-offer', async ({ offer }: { offer: RTCSessionDescriptionInit }) => {
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleOffer = async ({ offer }: { offer: RTCSessionDescriptionInit }) => {
       if (!peerRef.current || peerRef.current.signalingState === 'closed') return;
       try {
-        await peer.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
+        await peerRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerRef.current.createAnswer();
+        await peerRef.current.setLocalDescription(answer);
         socket.emit('webrtc-answer', { roomId, answer });
       } catch (e) {
         console.error('Failed to handle offer:', e);
       }
-    });
+    };
 
-    socket.on('webrtc-answer', async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
+    const handleAnswer = async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
       if (!peerRef.current || peerRef.current.signalingState === 'closed') return;
       try {
-        await peer.setRemoteDescription(new RTCSessionDescription(answer));
+        await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer));
       } catch (e) {
         console.error('Failed to set answer:', e);
       }
-    });
+    };
 
-    socket.on('ice-candidate', async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
+    const handleIceCandidate = async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
       if (!peerRef.current || peerRef.current.signalingState === 'closed') return;
       try {
-        await peer.addIceCandidate(new RTCIceCandidate(candidate));
+        await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
         console.warn('ICE candidate error (non-fatal):', e);
       }
-    });
+    };
+
+    socket.on('webrtc-offer', handleOffer);
+    socket.on('webrtc-answer', handleAnswer);
+    socket.on('ice-candidate', handleIceCandidate);
+
+    return () => {
+      socket.off('webrtc-offer', handleOffer);
+      socket.off('webrtc-answer', handleAnswer);
+      socket.off('ice-candidate', handleIceCandidate);
+    };
+  }, [socket, roomId]);
+
+  const startCall = useCallback(async () => {
+    if (!socket || !roomId || !localStream) return;
+
+    // Clean up previous peer
+    if (peerRef.current) {
+      peerRef.current.close();
+    }
+
+    const peer = createPeer();
+    peerRef.current = peer;
+    remoteStreamRef.current = new MediaStream();
+
+    // Add local tracks
+    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+
+    if (isInitiator) {
+      try {
+        const offer = await peer.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+        await peer.setLocalDescription(offer);
+        socket.emit('webrtc-offer', { roomId, offer });
+      } catch (e) {
+        console.error('Failed to create offer:', e);
+      }
+    }
   }, [socket, roomId, localStream, isInitiator, createPeer]);
 
   const closePeer = useCallback(() => {
