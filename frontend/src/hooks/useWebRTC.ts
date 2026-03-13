@@ -1,280 +1,155 @@
-'use client';
+'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Socket } from 'socket.io-client';
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Socket } from 'socket.io-client'
 
-// ── Public STUN + TURN servers (works across different networks) ─────────────
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  // Open TURN servers via Metered (works for cross-network)
   {
     urls: 'turn:openrelay.metered.ca:80',
     username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-];
+    credential: 'openrelayproject'
+  }
+]
 
 interface UseWebRTCOptions {
-  socket: Socket | null;
-  roomId: string | null;
-  isInitiator: boolean;
-  localStream: MediaStream | null;
+  socket: Socket | null
+  roomId: string | null
+  isInitiator: boolean
+  localStream: MediaStream | null
 }
 
 export function useWebRTC({ socket, roomId, isInitiator, localStream }: UseWebRTCOptions) {
-  const peerRef = useRef<RTCPeerConnection | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const remoteStreamRef = useRef<MediaStream>(new MediaStream());
+
+  const peerRef = useRef<RTCPeerConnection | null>(null)
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+  const remoteStreamRef = useRef<MediaStream>(new MediaStream())
 
   const createPeer = useCallback(() => {
+
     const peer = new RTCPeerConnection({
-      iceServers: ICE_SERVERS,
-      iceCandidatePoolSize: 10, // Pre-gather ICE candidates for faster connection
-    });
+      iceServers: ICE_SERVERS
+    })
 
     peer.onicecandidate = (event) => {
       if (event.candidate && socket && roomId) {
-        socket.emit('ice-candidate', { roomId, candidate: event.candidate.toJSON() });
+        socket.emit('ice-candidate', {
+          roomId,
+          candidate: event.candidate.toJSON()
+        })
       }
-    };
-
-    peer.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', peer.iceConnectionState);
-      if (peer.iceConnectionState === 'failed') {
-        // Try ICE restart
-        if (isInitiator) {
-          peer.restartIce();
-        }
-      }
-    };
+    }
 
     peer.ontrack = (event) => {
       event.streams[0].getTracks().forEach((track) => {
-        remoteStreamRef.current.addTrack(track);
-      });
-      setRemoteStream(remoteStreamRef.current);
-    };
+        remoteStreamRef.current.addTrack(track)
+      })
+      setRemoteStream(remoteStreamRef.current)
+    }
 
-    return peer;
-  }, [socket, roomId, isInitiator]);
+    return peer
+
+  }, [socket, roomId])
 
   const startCall = useCallback(async () => {
-    if (!socket || !roomId || !localStream) return;
 
-    // Clean up previous peer
+    if (!socket || !roomId || !localStream) return
+
     if (peerRef.current) {
-      peerRef.current.close();
+      peerRef.current.close()
     }
 
-    const peer = createPeer();
-    peerRef.current = peer;
-    remoteStreamRef.current = new MediaStream();
+    const peer = createPeer()
+    peerRef.current = peer
+    remoteStreamRef.current = new MediaStream()
 
-    // Add local tracks
-    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+    localStream.getTracks().forEach(track => {
+      peer.addTrack(track, localStream)
+    })
 
     if (isInitiator) {
-      try {
-        const offer = await peer.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-        await peer.setLocalDescription(offer);
-        socket.emit('webrtc-offer', { roomId, offer });
-      } catch (e) {
-        console.error('Failed to create offer:', e);
-      }
+
+      const offer = await peer.createOffer()
+
+      await peer.setLocalDescription(offer)
+
+      socket.emit('webrtc-offer', {
+        roomId,
+        offer
+      })
     }
 
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleOffer = async ({ offer }: { offer: RTCSessionDescriptionInit }) => {
-      if (!peerRef.current || peerRef.current.signalingState === 'closed') return;
-      try {
-        await peerRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerRef.current.createAnswer();
-        await peerRef.current.setLocalDescription(answer);
-        socket.emit('webrtc-answer', { roomId, answer });
-      } catch (e) {
-        console.error('Failed to handle offer:', e);
-      }
-    };
-
-    const handleAnswer = async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
-      if (!peerRef.current || peerRef.current.signalingState === 'closed') return;
-      try {
-        await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-      } catch (e) {
-        console.error('Failed to set answer:', e);
-      }
-    };
-
-    const handleIceCandidate = async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
-      if (!peerRef.current || peerRef.current.signalingState === 'closed') return;
-      try {
-        await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (e) {
-        console.warn('ICE candidate error (non-fatal):', e);
-      }
-    };
-
-    socket.on('webrtc-offer', handleOffer);
-    socket.on('webrtc-answer', handleAnswer);
-    socket.on('ice-candidate', handleIceCandidate);
-
-    return () => {
-      socket.off('webrtc-offer', handleOffer);
-      socket.off('webrtc-answer', handleAnswer);
-      socket.off('ice-candidate', handleIceCandidate);
-    };
-  }, [socket, roomId]);
-
-  const startCall = useCallback(async () => {
-    if (!socket || !roomId || !localStream) return;
-
-    // Clean up previous peer
-    if (peerRef.current) {
-      peerRef.current.close();
-    }
-
-    const peer = createPeer();
-    peerRef.current = peer;
-    remoteStreamRef.current = new MediaStream();
-
-    // Add local tracks
-    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
-
-    if (isInitiator) {
-      try {
-        const offer = await peer.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-        await peer.setLocalDescription(offer);
-        socket.emit('webrtc-offer', { roomId, offer });
-      } catch (e) {
-        console.error('Failed to create offer:', e);
-      }
-    }
-  }, [socket, roomId, localStream, isInitiator, createPeer]);
+  }, [socket, roomId, localStream, isInitiator, createPeer])
 
   const closePeer = useCallback(() => {
+
     if (peerRef.current) {
-      console.log('📉 Closing peer connection');
-      peerRef.current.close();
-      peerRef.current = null;
+      peerRef.current.close()
+      peerRef.current = null
     }
-    remoteStreamRef.current = new MediaStream();
-    setRemoteStream(null);
-  }, []);
+
+    setRemoteStream(null)
+    remoteStreamRef.current = new MediaStream()
+
+  }, [])
 
   useEffect(() => {
-    if (!socket || !roomId) return;
 
-    // --- SIGNALING HANDLERS ---
-    const handleOffer = async ({ offer }: { offer: RTCSessionDescriptionInit }) => {
-      console.log('📥 Received WebRTC Offer');
-      // If peer connection isn't ready yet, we might need to wait or create it.
-      // In this version, we ensure startCall is triggered by the roomId effect.
-      // But just in case, we check:
-      if (!peerRef.current) {
-         console.warn('⚠️ Offer received but peer connection not initialized yet. Retrying...');
-         return; 
-      }
-      
-      try {
-        await peerRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerRef.current.createAnswer();
-        await peerRef.current.setLocalDescription(answer);
-        socket.emit('webrtc-answer', { roomId, answer });
-        console.log('📤 Sent WebRTC Answer');
-      } catch (e) {
-        console.error('❌ Failed to handle offer:', e);
-      }
-    };
+    if (!socket) return
 
-    const handleAnswer = async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
-      console.log('📥 Received WebRTC Answer');
-      if (!peerRef.current) return;
-      try {
-        await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-      } catch (e) {
-        console.error('❌ Failed to set answer:', e);
-      }
-    };
+    const handleOffer = async ({ offer }: any) => {
 
-    const handleIceCandidate = async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
-      if (!peerRef.current) return;
-      try {
-        await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (e) {
-        console.warn('⚠️ ICE candidate error (non-fatal):', e);
-      }
-    };
+      if (!peerRef.current) return
 
-    socket.on('webrtc-offer', handleOffer);
-    socket.on('webrtc-answer', handleAnswer);
-    socket.on('ice-candidate', handleIceCandidate);
+      await peerRef.current.setRemoteDescription(new RTCSessionDescription(offer))
+
+      const answer = await peerRef.current.createAnswer()
+
+      await peerRef.current.setLocalDescription(answer)
+
+      socket.emit('webrtc-answer', { roomId, answer })
+
+    }
+
+    const handleAnswer = async ({ answer }: any) => {
+
+      if (!peerRef.current) return
+
+      await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer))
+
+    }
+
+    const handleIceCandidate = async ({ candidate }: any) => {
+
+      if (!peerRef.current) return
+
+      await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+
+    }
+
+    socket.on('webrtc-offer', handleOffer)
+    socket.on('webrtc-answer', handleAnswer)
+    socket.on('ice-candidate', handleIceCandidate)
 
     return () => {
-      socket.off('webrtc-offer', handleOffer);
-      socket.off('webrtc-answer', handleAnswer);
-      socket.off('ice-candidate', handleIceCandidate);
-    };
-  }, [socket, roomId]);
-
-  const startCall = useCallback(async () => {
-    if (!socket || !roomId || !localStream) return;
-
-    console.log('🚀 Starting WebRTC Call...', { isInitiator });
-    
-    // 1. Clean up previous
-    if (peerRef.current) peerRef.current.close();
-
-    // 2. Create new peer
-    const peer = createPeer();
-    peerRef.current = peer;
-    remoteStreamRef.current = new MediaStream();
-
-    // 3. Add tracks
-    localStream.getTracks().forEach((track) => {
-      console.log(`🔌 Adding local track: ${track.kind}`);
-      peer.addTrack(track, localStream);
-    });
-
-    // 4. If initiator, create and send offer
-    if (isInitiator) {
-      try {
-        const offer = await peer.createOffer({ 
-          offerToReceiveAudio: true, 
-          offerToReceiveVideo: true 
-        });
-        await peer.setLocalDescription(offer);
-        socket.emit('webrtc-offer', { roomId, offer });
-        console.log('📤 Sent WebRTC Offer');
-      } catch (e) {
-        console.error('❌ Failed to create offer:', e);
-      }
+      socket.off('webrtc-offer', handleOffer)
+      socket.off('webrtc-answer', handleAnswer)
+      socket.off('ice-candidate', handleIceCandidate)
     }
-  }, [socket, roomId, localStream, isInitiator, createPeer]);
+
+  }, [socket, roomId])
 
   useEffect(() => {
+
     if (roomId && socket && localStream) {
-      startCall();
+      startCall()
     }
-    return () => {
-      closePeer();
-    };
-  }, [roomId, socket, localStream, startCall, closePeer]);
 
-  return { remoteStream, closePeer };
+    return () => closePeer()
+
+  }, [roomId, socket, localStream, startCall, closePeer])
+
+  return { remoteStream, closePeer }
 }
